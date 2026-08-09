@@ -191,6 +191,7 @@
       state.result = null;
       state.finished = false;
       state.lastPhase = null;
+      state.busy = false;
       persistDraft();
       renderChallenge();
       startTimer();
