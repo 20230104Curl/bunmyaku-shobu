@@ -80,8 +80,12 @@ button:focus-visible, input:focus-visible { outline: 3px solid rgba(213, 166, 59
 .rules-strip b { color: var(--ink); font-size: 15px; }
 .rules-strip i { width: 1px; height: 28px; background: var(--line); }
 
-.challenge-page { min-height: 100vh; height: 100dvh; display: grid; grid-template-rows: 72px minmax(0, 1fr) auto; background: #ece9e1; overflow: hidden; }
+.challenge-page { min-height: 100vh; height: 100dvh; display: grid; grid-template-rows: 72px auto minmax(0, 1fr) auto; overflow: hidden; transition: background-color .35s ease; }
+.challenge-page.phase-reading { background: #e7f0f7; }
+.challenge-page.phase-answer { background: #fff3cf; }
 .challenge-header { background: var(--green); color: white; display: flex; align-items: center; justify-content: space-between; padding: 0 26px 0 30px; box-shadow: 0 4px 16px rgba(10,40,30,.18); z-index: 3; }
+.phase-reading .challenge-header { background: #194e70; }
+.phase-answer .challenge-header { background: #7b5410; }
 .challenge-header > div:first-child { display: flex; gap: 22px; align-items: baseline; min-width: 0; }
 .challenge-header span { font-size: 12px; letter-spacing: .12em; opacity: .74; }
 .challenge-header strong { font-family: "Yu Mincho", serif; font-size: 20px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -89,12 +93,20 @@ button:focus-visible, input:focus-visible { outline: 3px solid rgba(213, 166, 59
 .phase-pill { min-width: 170px; height: 54px; display: flex; align-items: center; justify-content: space-between; padding: 0 15px; background: rgba(255,255,255,.1); border-left: 3px solid var(--gold); }
 .phase-pill strong { font-family: ui-monospace, monospace; font-size: 27px; letter-spacing: -.04em; }
 .phase-pill.answer { background: #fff; color: var(--green); }
-.phase-pill.answer span { color: var(--green); opacity: 1; font-weight: 800; }
+.phase-pill.answer span { color: #7b5410; opacity: 1; font-weight: 900; }
+.phase-banner { min-height: 42px; display: flex; align-items: center; justify-content: center; gap: 18px; padding: 8px 18px; color: white; box-shadow: 0 3px 10px rgba(20,35,28,.12); z-index: 2; }
+.phase-banner strong { min-width: 78px; padding: 4px 12px; border: 2px solid rgba(255,255,255,.82); border-radius: 999px; text-align: center; font-size: 15px; letter-spacing: .08em; }
+.phase-banner span { font-size: 13px; font-weight: 800; }
+.phase-banner.reading { background: #2d78a6; }
+.phase-banner.answer { background: #d18a00; animation: answer-phase-flash .75s ease-out; }
+@keyframes answer-phase-flash { 0% { filter: brightness(1.6); transform: scaleY(1.08); } 100% { filter: brightness(1); transform: scaleY(1); } }
 .paragraph-board { overflow-y: auto; padding: 14px 18px; display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; align-content: start; }
 .paragraph-card { background: var(--panel); border: 1px solid #d7d4c9; padding: 15px 16px 14px 49px; position: relative; box-shadow: 0 2px 5px rgba(25,40,33,.04); }
 .paragraph-card > span { position: absolute; left: 14px; top: 13px; width: 25px; height: 25px; display: grid; place-items: center; background: var(--green); color: white; font-family: Georgia, serif; font-weight: 700; }
 .paragraph-card p { margin: 0; font-family: "Yu Mincho", "Hiragino Mincho ProN", serif; font-size: clamp(13px, 1.22vw, 16px); line-height: 1.78; text-align: justify; }
-.answer-dock { background: #fffdf8; border-top: 1px solid #cbc8bd; padding: 11px 18px max(14px, env(safe-area-inset-bottom)); box-shadow: 0 -8px 28px rgba(26,45,37,.08); z-index: 2; }
+.answer-dock { background: #fffdf8; border-top: 1px solid #cbc8bd; padding: 11px 18px max(14px, env(safe-area-inset-bottom)); box-shadow: 0 -8px 28px rgba(26,45,37,.08); z-index: 2; transition: background-color .35s ease, border-color .35s ease; }
+.phase-reading .answer-dock { background: #eaf4fb; border-top-color: #9bbdd2; }
+.phase-answer .answer-dock { background: #fff0bd; border-top: 3px solid #d18a00; }
 .answer-heading { display: flex; align-items: baseline; justify-content: space-between; max-width: 1200px; margin: 0 auto 9px; }
 .answer-heading strong { font-size: 14px; }
 .answer-heading span { font-size: 11px; color: var(--muted); }
@@ -176,6 +188,9 @@ button:focus-visible, input:focus-visible { outline: 3px solid rgba(213, 166, 59
   .challenge-header > div:first-child { display: grid; gap: 2px; }
   .challenge-header strong { max-width: 48vw; font-size: 15px; }
   .phase-pill { min-width: 126px; }
+  .phase-banner { align-items: flex-start; flex-direction: column; gap: 3px; padding: 7px 12px; }
+  .phase-banner strong { min-width: 0; padding: 2px 9px; font-size: 12px; }
+  .phase-banner span { font-size: 11px; }
   .paragraph-board { grid-template-columns: 1fr; padding: 10px; }
   .answer-heading { align-items: start; flex-direction: column; gap: 3px; }
   .answer-controls { min-width: 0; }
