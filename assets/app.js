@@ -346,8 +346,8 @@
       !state.attempt.testMode ? '<div class="result-streak"><span>今日で</span><strong>' + Number(result.streakDays || 0) + '</strong><b>日連続！</b></div>' : '',
       '<div class="answer-compare"><div><span>あなたの答え</span><strong>' + escapeHtml(result.answer.length ? result.answer.join(' → ') : '未完成') + '</strong></div>',
       '<div><span>正しい順番</span><strong>' + escapeHtml(result.correctOrder.join(' → ')) + '</strong></div></div>',
-      !result.correct && !result.timedOut && result.feedbackRule ? '<div class="feedback-box"><span>ここを確認しよう</span><p>' + escapeHtml(result.feedbackRule.explanation) + '</p></div>' : '',
-      !result.correct && !result.timedOut && result.review ? reviewHtml(result.review, question.paragraphs) : '',
+      !result.correct && result.feedbackRule ? '<div class="feedback-box"><span>ここを確認しよう</span><p>' + escapeHtml(result.feedbackRule.explanation) + '</p></div>' : '',
+      !result.correct && result.review ? reviewHtml(result.review, question.paragraphs) : '',
       '<p class="completion-note">' + (state.attempt.testMode ? 'テスト実施のため正式記録には残りません。' : '本日の文脈勝負は終了です。再挑戦はできません。') + '</p>',
       '<button id="finish-learning" class="finish-learning" type="button">学習を終える</button>',
       '</section></main>'
