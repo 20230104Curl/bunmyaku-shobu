@@ -212,7 +212,9 @@ function submitAttempt_(body) {
     var elapsedSeconds = Math.max(0, Math.floor(((validLockedAt ? locked : now) - started) / 1000));
     var timedOut = !complete || elapsedSeconds >= Number(config.TOTAL_SECONDS);
     var correct = complete && !timedOut && answer.join(',') === question.correctOrder.join(',');
-    var feedbackRule = correct || !complete ? null : firstBrokenRule_(question.feedbackRules, answer);
+    var feedbackRule = correct ? null : (
+      firstBrokenRule_(question.feedbackRules, answer) || firstFeedbackRule_(question.feedbackRules)
+    );
     var result = {
       correct: correct,
       timedOut: timedOut,
@@ -411,6 +413,12 @@ function firstBrokenRule_(rules, answer) {
     var first = answer.indexOf(rule.first);
     var second = answer.indexOf(rule.second);
     return first < 0 || second !== first + 1;
+  })[0] || null;
+}
+
+function firstFeedbackRule_(rules) {
+  return rules.slice().sort(function (a, b) {
+    return Number(a.priority) - Number(b.priority);
   })[0] || null;
 }
 
