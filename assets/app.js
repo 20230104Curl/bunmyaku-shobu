@@ -3,7 +3,7 @@
 
   var root = document.getElementById('app');
   var config = window.BUNMYAKU_CONFIG || {};
-  var DRAFT_KEY = 'bunmyaku-shobu-active-attempt-v2';
+  var DRAFT_KEY = 'bunmyaku-shobu-active-attempt-v3';
   var PENDING_KEY = DRAFT_KEY + '-pending';
   var labels = ['A', 'B', 'C', 'D', 'E', 'F'];
   var timerId = null;
@@ -73,6 +73,10 @@
   }
 
   function timing() {
+    if (state.attempt && state.attempt.testMode) {
+      var base = state.attempt.timing || { answerSeconds: 60 };
+      return { readingSeconds: 0, answerSeconds: Number(base.answerSeconds || 60), totalSeconds: Number(base.answerSeconds || 60) };
+    }
     if (state.attempt && state.attempt.timing) return state.attempt.timing;
     if (state.status && state.status.timing) return state.status.timing;
     return { readingSeconds: 180, answerSeconds: 60, totalSeconds: 240 };
@@ -208,10 +212,15 @@
     state.lastPhase = info.phase;
     var question = state.attempt.question;
     root.innerHTML = [
-      '<main class="challenge-page">',
+      '<main class="challenge-page phase-' + info.phase + '">',
       '<header class="challenge-header"><div><span>文脈勝負</span><strong>' + escapeHtml(question.title) + '</strong>',
       state.attempt.testMode ? '<small>テスト実施｜正式記録には残りません</small>' : '',
-      '</div><div id="phase-pill" class="phase-pill ' + info.phase + '"><span id="phase-label">' + (info.phase === 'reading' ? '読解時間' : '並べ替え時間') + '</span><strong id="timer">' + formatClock(info.remaining) + '</strong></div></header>',
+      '</div><div id="phase-pill" class="phase-pill ' + info.phase + '"><span id="phase-label">' + (info.phase === 'reading' ? '読解中' : '解答中') + '</span><strong id="timer">' + formatClock(info.remaining) + '</strong></div></header>',
+      '<div class="phase-banner ' + info.phase + '" role="status">',
+      info.phase === 'reading'
+        ? '<strong>読解中</strong><span>今は文章のつながりを考える時間です。解答操作はまだできません。</span>'
+        : '<strong>解答中</strong><span>' + (state.attempt.testMode ? 'テスト用IDのため、すぐに並べ替えできます。' : '画面が黄色に変わりました。A～Fを正しい順に選んでください。') + '</span>',
+      '</div>',
       '<section class="paragraph-board" aria-label="問題文">',
       question.paragraphs.map(function (paragraph) {
         return '<article class="paragraph-card"><span>' + escapeHtml(paragraph.label) + '</span><p>' + escapeHtml(paragraph.text) + '</p></article>';
@@ -240,7 +249,7 @@
       labels.map(function (label) {
         return '<button type="button" data-label="' + label + '" ' + (!answer || state.answer.indexOf(label) >= 0 ? 'disabled' : '') + '>' + label + '</button>';
       }).join(''),
-      '</div><button id="submit-answer" class="submit-answer" type="button" ' + (!answer || state.answer.length !== 6 || state.busy ? 'disabled' : '') + '>' + (state.busy ? '提出中…' : '解答する') + '</button></div>'
+      '</div><button id="submit-answer" class="submit-answer" type="button" ' + (!answer || state.answer.length !== 6 || submitting ? 'disabled' : '') + '>' + (submitting ? '提出中…' : '解答する') + '</button></div>'
     ].join('');
   }
 
