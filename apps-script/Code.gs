@@ -97,6 +97,9 @@ function doPost(e) {
       case 'submitAttempt':
         result = submitAttempt_(body);
         break;
+      case 'refreshDashboards':
+        result = refreshDashboardsAction_();
+        break;
       default:
         throw appError_('未対応の操作です。', 'UNKNOWN_ACTION');
     }
@@ -235,7 +238,6 @@ function submitAttempt_(body) {
     result.streakDays = getStudentStats_(active.studentId).currentStreak;
 
     updateActiveResult_(active.rowNumber, result);
-    refreshDashboards_();
     return { result: result, duplicate: false };
   } finally {
     lock.releaseLock();
@@ -459,11 +461,13 @@ function bigramSet_(text) {
   return set;
 }
 
-function getStudentStats_(studentId) {
-  var today = tokyoDate_();
-  var questionDates = getQuestions_().map(function (question) { return question.releaseDate; });
+function getStudentStats_(studentId, questions, submittedRows, targetDate) {
+  var today = targetDate || tokyoDate_();
+  var questionSource = questions || getQuestions_();
+  var attemptSource = submittedRows || getSubmittedRows_();
+  var questionDates = questionSource.map(function (question) { return question.releaseDate; });
   var released = questionDates.filter(function (date) { return date <= today; });
-  var rows = getSubmittedRows_().filter(function (row) { return row.studentId === studentId; });
+  var rows = attemptSource.filter(function (row) { return row.studentId === studentId; });
   var completedDates = unique_(rows.map(function (row) { return row.practiceDate; }));
   var completedSet = {};
   completedDates.forEach(function (date) { completedSet[date] = true; });
@@ -500,6 +504,17 @@ function getStudentStats_(studentId) {
   };
 }
 
+function refreshDashboardsAction_() {
+  var lock = LockService.getDocumentLock();
+  if (!lock.tryLock(5000)) return { refreshed: false, busy: true };
+  try {
+    refreshDashboards_();
+    return { refreshed: true, busy: false };
+  } finally {
+    lock.releaseLock();
+  }
+}
+
 function refreshDashboards() {
   refreshDashboards_();
   getSpreadsheet_().toast('集計を更新しました。', '文脈勝負', 3);
@@ -511,7 +526,7 @@ function refreshDashboards_() {
   var attempts = getSubmittedRows_();
   var today = tokyoDate_();
   var studentRows = students.map(function (student) {
-    return { student: student, stats: getStudentStats_(student.studentId) };
+    return { student: student, stats: getStudentStats_(student.studentId, questions, attempts, today) };
   });
   var streakRows = studentRows.filter(function (row) { return row.stats.currentStreak >= 5; })
     .sort(function (a, b) { return b.stats.currentStreak - a.stats.currentStreak; });
