@@ -3,7 +3,7 @@
 
   var root = document.getElementById('app');
   var config = window.BUNMYAKU_CONFIG || {};
-  var DRAFT_KEY = 'bunmyaku-shobu-active-attempt-v4';
+  var DRAFT_KEY = 'bunmyaku-shobu-active-attempt-v5';
   var PENDING_KEY = DRAFT_KEY + '-pending';
   var timerId = null;
   var submitting = false;
@@ -93,7 +93,7 @@ function periodText() {
     }
     if (state.attempt && state.attempt.timing) return state.attempt.timing;
     if (state.status && state.status.timing) return state.status.timing;
-    return { readingSeconds: 180, answerSeconds: 60, totalSeconds: 240 };
+    return { readingSeconds: 120, answerSeconds: 60, totalSeconds: 180 };
   }
 
   function phaseInfo() {
@@ -107,6 +107,11 @@ function periodText() {
 
   function formatClock(seconds) {
     return Math.floor(seconds / 60) + ':' + String(seconds % 60).padStart(2, '0');
+  }
+
+  function durationLabel(seconds) {
+    var value = Number(seconds || 0);
+    return value % 60 === 0 ? (value / 60) + '分' : value + '秒';
   }
 
   function persistDraft() {
@@ -127,12 +132,13 @@ function periodText() {
     stopTimer();
     var digits = state.status ? state.status.studentIdDigits : 8;
     var student = state.verifiedStudent;
+    var timeConfig = timing();
     root.innerHTML = [
       '<main class="entry-page"><section class="entry-shell">',
       '<div class="brand-lockup">',
       '<span class="brand-kicker">6段落並べ替えトレーニング</span>',
       '<h1>文脈<span>勝負</span></h1>',
-      '<p>つながりを読み、順序を見抜く。<br>4分間の読解トレーニング。</p>',
+      '<p>つながりを読み、順序を見抜く。<br>' + durationLabel(timeConfig.totalSeconds) + '間の読解トレーニング。</p>',
       '</div>',
       '<div class="entry-card">',
       '<div class="today-mark"><span>実施期間</span><strong>' + escapeHtml(periodText()) + '</strong></div>',
@@ -146,7 +152,7 @@ function periodText() {
       ].join(''),
       state.notice ? '<p class="notice">' + escapeHtml(state.notice) + '</p>' : '',
       state.error ? '<p class="error" role="alert">' + escapeHtml(state.error) + '</p>' : '',
-      '<div class="rules-strip"><span><b>3分</b>読解</span><i></i><span><b>60秒</b>並べ替え</span><i></i><span><b>1日</b>1問</span></div>',
+      '<div class="rules-strip"><span><b>' + durationLabel(timeConfig.readingSeconds) + '</b>読解</span><i></i><span><b>' + durationLabel(timeConfig.answerSeconds) + '</b>並べ替え</span><i></i><span><b>1日</b>1問</span></div>',
       '</div></section></main>'
     ].join('');
 
@@ -262,13 +268,15 @@ function periodText() {
   function answerDockHtml(phase) {
     var reading = phase === 'reading';
     var editable = phase === 'answer' && !submitting;
+    var timeConfig = timing();
+    var readingLabel = durationLabel(timeConfig.readingSeconds);
     var canSubmit = !submitting && (
       (phase === 'answer' && state.answer.length === 6) ||
       Boolean(state.error)
     );
     return [
-      '<div class="answer-heading"><strong>' + (submitting ? '解答を送信しています' : reading ? '3分間で文章の流れを考えよう' : '文章カードを正しい順にクリックしよう') + '</strong>',
-      '<span>' + (submitting ? '送信が完了すると結果画面へ切り替わります' : reading ? '180秒後に解答できます' : '選んだカードをもう一度押すと取り消せます') + '</span></div>',
+      '<div class="answer-heading"><strong>' + (submitting ? '解答を送信しています' : reading ? readingLabel + '間で文章の流れを考えよう' : '文章カードを正しい順にクリックしよう') + '</strong>',
+      '<span>' + (submitting ? '送信が完了すると結果画面へ切り替わります' : reading ? timeConfig.readingSeconds + '秒後に解答できます' : '選んだカードをもう一度押すと取り消せます') + '</span></div>',
       '<div class="answer-controls"><div class="answer-slots" aria-label="解答枠">',
       Array.from({ length: 6 }, function (_, index) {
         var value = state.answer[index] || '';
