@@ -161,7 +161,8 @@
       '<div class="student-confirm"><span>生徒情報を確認してください</span>',
       '<strong>' + escapeHtml(student.fullName) + '</strong>',
       student.campus ? '<p>' + escapeHtml(student.campus) + '</p>' : '',
-      !student.testMode ? '<div class="student-streak"><span>現在の連続実施</span><strong>' + Number(student.streakDays || 0) + '<small>日</small></strong></div>' : '<p class="test-note">テスト実施｜正式記録には残りません</p>',
+      '<div class="student-streak"><span>現在の連続実施</span><strong>' + Number(student.streakDays || 0) + '<small>日</small></strong></div>',
+      student.testMode ? '<p class="test-note">テスト実施｜提出内容は実施記録に保存されます</p>' : '',
       '<div class="confirm-actions">',
       '<button id="confirm-start" type="button" class="confirm-start" ' + (state.busy ? 'disabled' : '') + '>' + (state.busy ? '開始準備中…' : 'この生徒で始める') + '</button>',
       '<button id="confirm-back" type="button" class="confirm-back" ' + (state.busy ? 'disabled' : '') + '>入力し直す</button>',
@@ -214,7 +215,7 @@
     root.innerHTML = [
       '<main class="challenge-page phase-' + info.phase + '">',
       '<header class="challenge-header"><div><span>文脈勝負</span><strong>' + escapeHtml(question.title) + '</strong>',
-      state.attempt.testMode ? '<small>テスト実施｜正式記録には残りません</small>' : '',
+      state.attempt.testMode ? '<small>テスト実施｜記録確認用（提出内容は保存されます）</small>' : '',
       '</div><div id="phase-pill" class="phase-pill ' + info.phase + '"><span id="phase-label">' + (info.phase === 'reading' ? '読解中' : '解答中') + '</span><strong id="timer">' + formatClock(info.remaining) + '</strong></div></header>',
       '<div class="phase-banner ' + info.phase + '" role="status">',
       info.phase === 'reading'
@@ -352,12 +353,12 @@
       '<main class="result-page"><section class="result-card ' + (result.correct ? 'is-correct' : 'is-wrong') + '">',
       '<p class="eyebrow">文脈勝負｜' + escapeHtml(question.releaseDate.replace(/-/g, '.')) + '</p>',
       '<h1>' + title + '</h1><p class="result-lead">' + lead + '</p>',
-      !state.attempt.testMode ? '<div class="result-streak"><span>今日で</span><strong>' + Number(result.streakDays || 0) + '</strong><b>日連続！</b></div>' : '',
+      '<div class="result-streak"><span>今日で</span><strong>' + Number(result.streakDays || 0) + '</strong><b>日連続！</b></div>',
       '<div class="answer-compare"><div><span>あなたの答え</span><strong>' + escapeHtml(result.answer.length ? result.answer.join(' → ') : '未完成') + '</strong></div>',
       '<div><span>正しい順番</span><strong>' + escapeHtml(result.correctOrder.join(' → ')) + '</strong></div></div>',
       !result.correct && result.feedbackRule ? '<div class="feedback-box"><span>ここを確認しよう</span><p>' + escapeHtml(result.feedbackRule.explanation) + '</p></div>' : '',
       !result.correct && result.review ? reviewHtml(result.review, question.paragraphs) : '',
-      '<p class="completion-note">' + (state.attempt.testMode ? 'テスト実施のため正式記録には残りません。' : '本日の文脈勝負は終了です。再挑戦はできません。') + '</p>',
+      '<p class="completion-note">' + (state.attempt.testMode ? 'テスト実施の内容を実施記録に保存しました。' : '本日の文脈勝負は終了です。再挑戦はできません。') + '</p>',
       '<button id="finish-learning" class="finish-learning" type="button">学習を終える</button>',
       '</section></main>'
     ].join('');
@@ -380,21 +381,17 @@
   }
 
   function renderFinished() {
-    var testMode = state.attempt && state.attempt.testMode;
     root.innerHTML = [
       '<main class="finished-page"><section class="finished-card">',
       '<div class="finished-mark" aria-hidden="true">✓</div>',
       '<p class="eyebrow">文脈勝負｜本日のトレーニング</p>',
       '<h1>今日の学習は終了しました</h1>',
-      !testMode && state.result ? '<div class="finished-streak"><span>連続実施</span><strong>' + Number(state.result.streakDays || 0) + '<small>日</small></strong></div>' : '',
+      state.result ? '<div class="finished-streak"><span>連続実施</span><strong>' + Number(state.result.streakDays || 0) + '<small>日</small></strong></div>' : '',
       '<p>文章のつながりを意識して読んだ経験を、次の問題にも生かしましょう。</p>',
       '<div class="finished-actions">',
-      testMode ? '<button id="again" class="finish-primary" type="button">もう一度試す</button>' : '',
-      '<button id="to-entry" class="' + (testMode ? 'finish-secondary' : 'finish-primary') + '" type="button">ID入力画面へ戻る</button>',
+      '<button id="to-entry" class="finish-primary" type="button">ID入力画面へ戻る</button>',
       '</div></section></main>'
     ].join('');
-    var again = document.getElementById('again');
-    if (again) again.addEventListener('click', function () { reset(true); });
     document.getElementById('to-entry').addEventListener('click', function () { reset(false); });
   }
 
