@@ -152,7 +152,7 @@ function periodText() {
       ].join(''),
       state.notice ? '<p class="notice">' + escapeHtml(state.notice) + '</p>' : '',
       state.error ? '<p class="error" role="alert">' + escapeHtml(state.error) + '</p>' : '',
-      '<div class="rules-strip"><span><b>' + durationLabel(timeConfig.readingSeconds) + '</b>読解</span><i></i><span><b>' + durationLabel(timeConfig.answerSeconds) + '</b>並べ替え</span><i></i><span><b>1日</b>1問</span></div>',
+      '<div class="rules-strip"><span><b>' + durationLabel(timeConfig.readingSeconds) + '</b>読解</span><i></i><span><b>' + timeConfig.answerSeconds + '秒</b>並べ替え</span><i></i><span><b>1日</b>1問</span></div>',
       '</div></section></main>'
     ].join('');
 
