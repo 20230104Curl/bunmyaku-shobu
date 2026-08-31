@@ -121,10 +121,7 @@ function status_() {
 function verifyStudent_(rawStudentId) {
   var config = getConfig_();
   var studentId = validateStudentId_(rawStudentId, config);
-  if (studentId === String(config.TEST_STUDENT_ID)) {
-    return { studentId: studentId, fullName: 'テスト生徒', campus: '', testMode: true, streakDays: 0 };
-  }
-
+  var testMode = studentId === String(config.TEST_STUDENT_ID);
   var student = getStudent_(studentId);
   if (!student) throw appError_('この生徒IDは登録されていません。先生に確認してください。', 'NOT_REGISTERED');
   if (!student.active) throw appError_('この生徒IDは現在利用できません。先生に確認してください。', 'INACTIVE');
@@ -133,7 +130,7 @@ function verifyStudent_(rawStudentId) {
     studentId: student.studentId,
     fullName: student.fullName,
     campus: student.campus,
-    testMode: false,
+    testMode: testMode,
     streakDays: getStudentStats_(student.studentId).currentStreak
   };
 }
@@ -145,7 +142,7 @@ function startAttempt_(rawStudentId) {
     var config = getConfig_();
     var studentId = validateStudentId_(rawStudentId, config);
     var testMode = studentId === String(config.TEST_STUDENT_ID);
-    var student = testMode ? { studentId: studentId, fullName: 'テスト生徒', campus: '', active: true } : getStudent_(studentId);
+    var student = getStudent_(studentId);
     if (!student) throw appError_('この生徒IDは登録されていません。先生に確認してください。', 'NOT_REGISTERED');
     if (!student.active) throw appError_('この生徒IDは現在利用できません。先生に確認してください。', 'INACTIVE');
 
@@ -159,12 +156,12 @@ function startAttempt_(rawStudentId) {
       );
     }
 
-    if (!testMode && hasSubmitted_(studentId, question.questionId)) {
+    if (hasSubmitted_(studentId, question.questionId)) {
       throw appError_('本日の問題はすでに実施済みです。再挑戦はできません。', 'COMPLETED');
     }
 
-    var existing = testMode ? null : getActiveAttemptForStudent_(studentId, question.questionId);
-    if (existing) return attemptResponse_(existing, question, student, false, true, config);
+    var existing = getActiveAttemptForStudent_(studentId, question.questionId);
+    if (existing) return attemptResponse_(existing, question, student, testMode, true, config);
 
     var attempt = {
       attemptId: Utilities.getUuid(),
@@ -232,15 +229,13 @@ function submitAttempt_(body) {
       streakDays: 0
     };
 
-    if (!active.testMode) {
-      var student = getStudent_(active.studentId);
-      if (!student) throw appError_('生徒情報を確認できません。', 'STUDENT_NOT_FOUND');
-      appendSubmittedAttempt_(active, student, question, result);
-      result.streakDays = getStudentStats_(active.studentId).currentStreak;
-    }
+    var student = getStudent_(active.studentId);
+    if (!student) throw appError_('生徒情報を確認できません。', 'STUDENT_NOT_FOUND');
+    appendSubmittedAttempt_(active, student, question, result);
+    result.streakDays = getStudentStats_(active.studentId).currentStreak;
 
     updateActiveResult_(active.rowNumber, result);
-    if (!active.testMode) refreshDashboards_();
+    refreshDashboards_();
     return { result: result, duplicate: false };
   } finally {
     lock.releaseLock();
