@@ -23,9 +23,9 @@ assert.match(app, /totalSeconds: 180/);
 assert.match(app, /durationLabel/);
 assert.match(app, /timeConfig\.answerSeconds \+ '秒'/);
 assert.doesNotMatch(app, /3分間で|180秒後|4分間/);
-assert.doesNotMatch(app, /readingSeconds:\\s*0/, 'テストIDも通常の読解時間を使う');
-assert.match(code, /var timeLimit = Number\\(config\\.TOTAL_SECONDS\\);/);
-assert.doesNotMatch(code, /active\\.testMode \\? Number\\(config\\.ANSWER_SECONDS\\)/);
+assert.doesNotMatch(app, /readingSeconds:\s*0/, 'テストIDも通常の読解時間を使う');
+assert.match(code, /var timeLimit = Number\(config\.TOTAL_SECONDS\);/);
+assert.doesNotMatch(code, /active\.testMode \? Number\(config\.ANSWER_SECONDS\)/);
 
 for (const functionName of ['doGet', 'doPost', 'setupWorkbook', 'refreshDashboards', 'refreshIndividualSearch']) {
   assert.match(code, new RegExp('function\\s+' + functionName + '\\s*\\('));
