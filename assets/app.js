@@ -3,7 +3,7 @@
 
   var root = document.getElementById('app');
   var config = window.BUNMYAKU_CONFIG || {};
-  var DRAFT_KEY = 'bunmyaku-shobu-active-attempt-v5';
+  var DRAFT_KEY = 'bunmyaku-shobu-active-attempt-v6';
   var PENDING_KEY = DRAFT_KEY + '-pending';
   var timerId = null;
   var submitting = false;
@@ -87,10 +87,6 @@ function periodText() {
   }
 
   function timing() {
-    if (state.attempt && state.attempt.testMode) {
-      var base = state.attempt.timing || { answerSeconds: 60 };
-      return { readingSeconds: 0, answerSeconds: Number(base.answerSeconds || 60), totalSeconds: Number(base.answerSeconds || 60) };
-    }
     if (state.attempt && state.attempt.timing) return state.attempt.timing;
     if (state.status && state.status.timing) return state.status.timing;
     return { readingSeconds: 120, answerSeconds: 60, totalSeconds: 180 };
@@ -241,7 +237,7 @@ function periodText() {
         ? '<strong>送信中</strong><span>解答を受け付けています。画面を閉じずにお待ちください。</span>'
         : info.phase === 'reading'
           ? '<strong>読解中</strong><span>今は文章のつながりを考える時間です。解答操作はまだできません。</span>'
-          : '<strong>解答中</strong><span>' + (state.attempt.testMode ? 'テスト用IDのため、すぐに文章カードを選べます。' : '画面が黄色に変わりました。文章カードを正しい順にクリックしてください。') + '</span>',
+          : '<strong>解答中</strong><span>' + ('画面が黄色に変わりました。文章カードを正しい順にクリックしてください。') + '</span>',
       '</div>',
       '<section class="paragraph-board" aria-label="問題文">',
       question.paragraphs.map(function (paragraph) {
