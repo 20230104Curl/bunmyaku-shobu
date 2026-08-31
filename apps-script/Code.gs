@@ -210,7 +210,7 @@ function submitAttempt_(body) {
     var locked = body.lockedAt ? new Date(body.lockedAt).getTime() : now;
     var validLockedAt = isFinite(locked) && locked >= started && locked <= now + 5000;
     var elapsedSeconds = Math.max(0, Math.floor(((validLockedAt ? locked : now) - started) / 1000));
-    var timeLimit = active.testMode ? Number(config.ANSWER_SECONDS) : Number(config.TOTAL_SECONDS);
+    var timeLimit = Number(config.TOTAL_SECONDS);
     var timedOut = !complete || elapsedSeconds >= timeLimit;
     var correct = complete && !timedOut && answer.join(',') === question.correctOrder.join(',');
     var feedbackRule = correct ? null : (
