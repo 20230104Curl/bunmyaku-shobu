@@ -18,6 +18,11 @@ assert.match(config, /__APPS_SCRIPT_WEB_APP_URL__/);
 new Function(app);
 new Function(code);
 
+assert.match(app, /readingSeconds: 120/);
+assert.match(app, /totalSeconds: 180/);
+assert.match(app, /durationLabel/);
+assert.doesNotMatch(app, /3分間で|180秒後|4分間/);
+
 for (const functionName of ['doGet', 'doPost', 'setupWorkbook', 'refreshDashboards', 'refreshIndividualSearch']) {
   assert.match(code, new RegExp('function\\s+' + functionName + '\\s*\\('));
 }
