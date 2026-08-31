@@ -159,6 +159,8 @@ button:focus-visible, input:focus-visible { outline: 3px solid rgba(213, 166, 59
 .advice-box { background: #eef4ef; border-left-color: var(--green); }
 .advice-box strong { color: var(--green); }
 .completion-note { margin: 24px 0 13px; color: var(--muted); font-size: 12px; text-align: center; }
+.result-actions { width: min(740px, 100%); margin: 0 auto; display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.result-actions .finish-learning, .result-actions .finish-secondary { width: 100%; }
 .finish-learning, .finish-primary, .finish-secondary { display: block; width: min(360px, 100%); margin: 0 auto; padding: 15px; border-radius: 5px; font-weight: 800; cursor: pointer; }
 .finish-learning, .finish-primary { border: 0; background: var(--green); color: white; }
 .finish-secondary { border: 1px solid #aebbb5; background: white; color: var(--green); }
@@ -204,5 +206,5 @@ button:focus-visible, input:focus-visible { outline: 3px solid rgba(213, 166, 59
   .answer-slots button { height: 48px; }
   .answer-compare, .review-paragraphs { grid-template-columns: 1fr; }
   .result-card h1 { font-size: 42px; }
-  .confirm-actions { grid-template-columns: 1fr; }
+  .confirm-actions, .result-actions { grid-template-columns: 1fr; }
 }
