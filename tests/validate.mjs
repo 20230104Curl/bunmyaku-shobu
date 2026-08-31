@@ -21,6 +21,7 @@ new Function(code);
 assert.match(app, /readingSeconds: 120/);
 assert.match(app, /totalSeconds: 180/);
 assert.match(app, /durationLabel/);
+assert.match(app, /timeConfig\.answerSeconds \+ '秒'/);
 assert.doesNotMatch(app, /3分間で|180秒後|4分間/);
 
 for (const functionName of ['doGet', 'doPost', 'setupWorkbook', 'refreshDashboards', 'refreshIndividualSearch']) {
