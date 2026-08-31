@@ -158,11 +158,12 @@ function startAttempt_(rawStudentId) {
       );
     }
 
-    if (hasSubmitted_(studentId, question.questionId)) {
+    if (!testMode && hasSubmitted_(studentId, question.questionId)) {
       throw appError_('本日の問題はすでに実施済みです。再挑戦はできません。', 'COMPLETED');
     }
 
-    var existing = getActiveAttemptForStudent_(studentId, question.questionId);
+    // テスト用IDは過去の提出・中断状態に関係なく、毎回新しいテストを開始する。
+    var existing = testMode ? null : getActiveAttemptForStudent_(studentId, question.questionId);
     if (existing) return attemptResponse_(existing, question, student, testMode, true, config);
 
     var attempt = {
@@ -534,7 +535,11 @@ function refreshDashboards() {
 }
 
 function refreshDashboards_() {
-  var students = getStudents_().filter(function (student) { return student.active; });
+  var config = getConfig_();
+  var testStudentId = String(config.TEST_STUDENT_ID);
+  var students = getStudents_().filter(function (student) {
+    return student.active && student.studentId !== testStudentId;
+  });
   var questions = getQuestions_();
   var attempts = getSubmittedRows_();
   var today = tokyoDate_();
