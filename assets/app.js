@@ -3,7 +3,7 @@
 
   var root = document.getElementById('app');
   var config = window.BUNMYAKU_CONFIG || {};
-  var DRAFT_KEY = 'bunmyaku-shobu-active-attempt-v3';
+  var DRAFT_KEY = 'bunmyaku-shobu-active-attempt-v4';
   var PENDING_KEY = DRAFT_KEY + '-pending';
   var labels = ['A', 'B', 'C', 'D', 'E', 'F'];
   var timerId = null;
