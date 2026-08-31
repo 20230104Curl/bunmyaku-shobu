@@ -237,7 +237,7 @@ function periodText() {
         ? '<strong>送信中</strong><span>解答を受け付けています。画面を閉じずにお待ちください。</span>'
         : info.phase === 'reading'
           ? '<strong>読解中</strong><span>今は文章のつながりを考える時間です。解答操作はまだできません。</span>'
-          : '<strong>解答中</strong><span>' + ('画面が黄色に変わりました。文章カードを正しい順にクリックしてください。') + '</span>',
+          : '<strong>解答中</strong><span>画面が黄色に変わりました。文章カードを正しい順にクリックしてください。</span>',
       '</div>',
       '<section class="paragraph-board" aria-label="問題文">',
       question.paragraphs.map(function (paragraph) {
