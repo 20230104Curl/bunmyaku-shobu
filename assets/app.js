@@ -5,7 +5,6 @@
   var config = window.BUNMYAKU_CONFIG || {};
   var DRAFT_KEY = 'bunmyaku-shobu-active-attempt-v4';
   var PENDING_KEY = DRAFT_KEY + '-pending';
-  var labels = ['A', 'B', 'C', 'D', 'E', 'F'];
   var timerId = null;
   var submitting = false;
 
@@ -236,11 +235,20 @@ function periodText() {
         ? '<strong>送信中</strong><span>解答を受け付けています。画面を閉じずにお待ちください。</span>'
         : info.phase === 'reading'
           ? '<strong>読解中</strong><span>今は文章のつながりを考える時間です。解答操作はまだできません。</span>'
-          : '<strong>解答中</strong><span>' + (state.attempt.testMode ? 'テスト用IDのため、すぐに並べ替えできます。' : '画面が黄色に変わりました。A～Fを正しい順に選んでください。') + '</span>',
+          : '<strong>解答中</strong><span>' + (state.attempt.testMode ? 'テスト用IDのため、すぐに文章カードを選べます。' : '画面が黄色に変わりました。文章カードを正しい順にクリックしてください。') + '</span>',
       '</div>',
       '<section class="paragraph-board" aria-label="問題文">',
       question.paragraphs.map(function (paragraph) {
-        return '<article class="paragraph-card"><span>' + escapeHtml(paragraph.label) + '</span><p>' + escapeHtml(paragraph.text) + '</p></article>';
+        var selectedIndex = state.answer.indexOf(paragraph.label);
+        var selected = selectedIndex >= 0;
+        var editable = info.phase === 'answer' && !submitting;
+        var classes = 'paragraph-card' + (editable ? ' is-selectable' : '') + (selected ? ' is-selected' : '');
+        var interaction = editable
+          ? ' data-paragraph-label="' + escapeHtml(paragraph.label) + '" role="button" tabindex="0" aria-pressed="' + selected + '" aria-label="' + escapeHtml(paragraph.label) + 'の段落、' + (selected ? (selectedIndex + 1) + '番目に選択済み。もう一度押すと取り消します' : 'クリックして選択します') + '"'
+          : '';
+        return '<article class="' + classes + '"' + interaction + '><span class="paragraph-label">' + escapeHtml(paragraph.label) + '</span>' +
+          (selected ? '<em class="selection-order">' + (selectedIndex + 1) + '番目</em>' : '') +
+          '<p>' + escapeHtml(paragraph.text) + '</p></article>';
       }).join(''),
       '</section>',
       '<section id="answer-dock" class="answer-dock ' + (info.phase === 'reading' ? 'is-locked' : '') + '">',
@@ -259,28 +267,35 @@ function periodText() {
       Boolean(state.error)
     );
     return [
-      '<div class="answer-heading"><strong>' + (submitting ? '解答を送信しています' : reading ? '3分間で文章の流れを考えよう' : '正しい順に記号を選ぼう') + '</strong>',
-      '<span>' + (submitting ? '送信が完了すると結果画面へ切り替わります' : reading ? '180秒後に解答できます' : '入力した枠を押すと取り消せます') + '</span></div>',
+      '<div class="answer-heading"><strong>' + (submitting ? '解答を送信しています' : reading ? '3分間で文章の流れを考えよう' : '文章カードを正しい順にクリックしよう') + '</strong>',
+      '<span>' + (submitting ? '送信が完了すると結果画面へ切り替わります' : reading ? '180秒後に解答できます' : '選んだカードをもう一度押すと取り消せます') + '</span></div>',
       '<div class="answer-controls"><div class="answer-slots" aria-label="解答枠">',
       Array.from({ length: 6 }, function (_, index) {
         var value = state.answer[index] || '';
         return '<button type="button" data-slot="' + index + '" ' + (!editable || index >= state.answer.length ? 'disabled' : '') + ' aria-label="' + (index + 1) + '番目、' + (value || '未入力') + '"><small>' + (index + 1) + '</small><b>' + escapeHtml(value) + '</b></button>';
-      }).join(''),
-      '</div><div class="label-buttons">',
-      labels.map(function (label) {
-        return '<button type="button" data-label="' + label + '" ' + (!editable || state.answer.indexOf(label) >= 0 ? 'disabled' : '') + '>' + label + '</button>';
       }).join(''),
       '</div><button id="submit-answer" class="submit-answer" type="button" ' + (!canSubmit ? 'disabled' : '') + '>' + (submitting ? '提出中…' : state.error ? '提出を再送する' : '解答する') + '</button></div>'
     ].join('');
   }
 
 function bindAnswerControls() {
-    document.querySelectorAll('[data-label]').forEach(function (button) {
-      button.addEventListener('click', function () {
-        if (submitting || phaseInfo().phase !== 'answer' || state.answer.indexOf(button.dataset.label) >= 0) return;
-        state.answer.push(button.dataset.label);
-        persistDraft();
-        renderChallenge();
+    function toggleParagraph(label) {
+      if (submitting || phaseInfo().phase !== 'answer') return;
+      var selectedIndex = state.answer.indexOf(label);
+      if (selectedIndex >= 0) state.answer.splice(selectedIndex, 1);
+      else if (state.answer.length < 6) state.answer.push(label);
+      persistDraft();
+      renderChallenge();
+    }
+
+    document.querySelectorAll('[data-paragraph-label]').forEach(function (card) {
+      card.addEventListener('click', function () {
+        toggleParagraph(card.dataset.paragraphLabel);
+      });
+      card.addEventListener('keydown', function (event) {
+        if (event.key !== 'Enter' && event.key !== ' ') return;
+        event.preventDefault();
+        toggleParagraph(card.dataset.paragraphLabel);
       });
     });
     document.querySelectorAll('[data-slot]').forEach(function (button) {
