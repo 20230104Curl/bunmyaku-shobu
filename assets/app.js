@@ -396,10 +396,17 @@ function bindAnswerControls() {
       '<div><span>正しい順番</span><strong>' + escapeHtml(result.correctOrder.join(' → ')) + '</strong></div></div>',
       !result.correct && result.feedbackRule ? '<div class="feedback-box"><span>ここを確認しよう</span><p>' + escapeHtml(result.feedbackRule.explanation) + '</p></div>' : '',
       !result.correct && result.review ? reviewHtml(result.review, question.paragraphs) : '',
-      '<p class="completion-note">' + (state.attempt.testMode ? 'テスト実施の内容を実施記録に保存しました。' : '本日の文脈勝負は終了です。再挑戦はできません。') + '</p>',
-      '<button id="finish-learning" class="finish-learning" type="button">学習を終える</button>',
+      '<p class="completion-note">' + (state.attempt.testMode ? 'テスト実施の内容を実施記録に保存しました。正式な集計には含まれません。' : '本日の文脈勝負は終了です。再挑戦はできません。') + '</p>',
+      state.attempt.testMode
+        ? '<div class="result-actions"><button id="retry-test" class="finish-learning" type="button">もう一度テストする</button><button id="finish-learning" class="finish-secondary" type="button">テストを終了する</button></div>'
+        : '<button id="finish-learning" class="finish-learning" type="button">学習を終える</button>',
       '</section></main>'
     ].join('');
+    var retry = document.getElementById('retry-test');
+    if (retry) retry.addEventListener('click', function () {
+      reset(true);
+      beginAttempt();
+    });
     document.getElementById('finish-learning').addEventListener('click', function () {
       state.finished = true;
       renderFinished();
@@ -434,6 +441,7 @@ function bindAnswerControls() {
 
   function reset(keepTestId) {
     var previousTest = state.attempt && state.attempt.testMode;
+    var previousStudent = state.verifiedStudent;
     clearDraft();
     state.attempt = null;
     state.answer = [];
@@ -445,7 +453,7 @@ function bindAnswerControls() {
     state.verifiedStudent = null;
     if (!keepTestId || !previousTest) state.studentId = '';
     if (keepTestId && previousTest) {
-      state.verifiedStudent = { studentId: state.studentId, fullName: 'テスト生徒', campus: '', testMode: true, streakDays: 0 };
+      state.verifiedStudent = previousStudent || { studentId: state.studentId, fullName: 'テスト生', campus: 'テスト', testMode: true };
     }
     window.scrollTo({ top: 0, behavior: 'smooth' });
     renderEntry();
