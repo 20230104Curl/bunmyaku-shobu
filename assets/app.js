@@ -41,32 +41,47 @@
   async function api(action, payload) {
     var url = apiUrl();
     if (!url) throw new Error('Googleスプレッドシートとの接続設定がまだ完了していません。');
+    var controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
+    var timeoutId = controller ? window.setTimeout(function () { controller.abort(); }, 15000) : null;
     var response;
-    if (action === 'status') {
-      response = await fetch(url + '?action=status&t=' + Date.now(), {
-        method: 'GET',
-        cache: 'no-store',
-        redirect: 'follow'
-      });
-    } else {
-      response = await fetch(url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-        body: JSON.stringify(Object.assign({ action: action }, payload || {})),
-        redirect: 'follow'
-      });
-    }
-    if (!response.ok) throw new Error('通信に失敗しました。しばらくしてからもう一度お試しください。');
-    var body = await response.json();
-    if (!body.ok) {
-      var error = new Error(body.error || '処理に失敗しました。');
-      error.code = body.code;
+    try {
+      if (action === 'status') {
+        var getOptions = {
+          method: 'GET',
+          cache: 'no-store',
+          redirect: 'follow'
+        };
+        if (controller) getOptions.signal = controller.signal;
+        response = await fetch(url + '?action=status&t=' + Date.now(), getOptions);
+      } else {
+        var postOptions = {
+          method: 'POST',
+          headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+          body: JSON.stringify(Object.assign({ action: action }, payload || {})),
+          redirect: 'follow'
+        };
+        if (controller) postOptions.signal = controller.signal;
+        response = await fetch(url, postOptions);
+      }
+      if (!response.ok) throw new Error('通信に失敗しました。しばらくしてからもう一度お試しください。');
+      var body = await response.json();
+      if (!body.ok) {
+        var error = new Error(body.error || '処理に失敗しました。');
+        error.code = body.code;
+        throw error;
+      }
+      return body.data;
+    } catch (error) {
+      if (error && error.name === 'AbortError') {
+        throw new Error('通信に時間がかかっています。自動的に再接続します。');
+      }
       throw error;
+    } finally {
+      if (timeoutId) window.clearTimeout(timeoutId);
     }
-    return body.data;
   }
 
-  function periodText() {
+function periodText() {
     var period = state.status && state.status.period;
     if (!period) return '2026.10.01 — 10.31';
     return period.start.replace(/-/g, '.') + ' — ' + period.end.slice(5).replace('-', '.');
@@ -216,11 +231,13 @@
       '<main class="challenge-page phase-' + info.phase + '">',
       '<header class="challenge-header"><div><span>文脈勝負</span><strong>' + escapeHtml(question.title) + '</strong>',
       state.attempt.testMode ? '<small>テスト実施｜記録確認用（提出内容は保存されます）</small>' : '',
-      '</div><div id="phase-pill" class="phase-pill ' + info.phase + '"><span id="phase-label">' + (info.phase === 'reading' ? '読解中' : '解答中') + '</span><strong id="timer">' + formatClock(info.remaining) + '</strong></div></header>',
+      '</div><div id="phase-pill" class="phase-pill ' + info.phase + '"><span id="phase-label">' + (submitting ? '送信中' : info.phase === 'reading' ? '読解中' : '解答中') + '</span><strong id="timer">' + (submitting ? '—' : formatClock(info.remaining)) + '</strong></div></header>',
       '<div class="phase-banner ' + info.phase + '" role="status">',
-      info.phase === 'reading'
-        ? '<strong>読解中</strong><span>今は文章のつながりを考える時間です。解答操作はまだできません。</span>'
-        : '<strong>解答中</strong><span>' + (state.attempt.testMode ? 'テスト用IDのため、すぐに並べ替えできます。' : '画面が黄色に変わりました。A～Fを正しい順に選んでください。') + '</span>',
+      submitting
+        ? '<strong>送信中</strong><span>解答を受け付けています。画面を閉じずにお待ちください。</span>'
+        : info.phase === 'reading'
+          ? '<strong>読解中</strong><span>今は文章のつながりを考える時間です。解答操作はまだできません。</span>'
+          : '<strong>解答中</strong><span>' + (state.attempt.testMode ? 'テスト用IDのため、すぐに並べ替えできます。' : '画面が黄色に変わりました。A～Fを正しい順に選んでください。') + '</span>',
       '</div>',
       '<section class="paragraph-board" aria-label="問題文">',
       question.paragraphs.map(function (paragraph) {
@@ -237,27 +254,31 @@
 
   function answerDockHtml(phase) {
     var reading = phase === 'reading';
-    var answer = phase === 'answer';
+    var editable = phase === 'answer' && !submitting;
+    var canSubmit = !submitting && (
+      (phase === 'answer' && state.answer.length === 6) ||
+      Boolean(state.error)
+    );
     return [
-      '<div class="answer-heading"><strong>' + (reading ? '3分間で文章の流れを考えよう' : '正しい順に記号を選ぼう') + '</strong>',
-      '<span>' + (reading ? '180秒後に解答できます' : '入力した枠を押すと取り消せます') + '</span></div>',
+      '<div class="answer-heading"><strong>' + (submitting ? '解答を送信しています' : reading ? '3分間で文章の流れを考えよう' : '正しい順に記号を選ぼう') + '</strong>',
+      '<span>' + (submitting ? '送信が完了すると結果画面へ切り替わります' : reading ? '180秒後に解答できます' : '入力した枠を押すと取り消せます') + '</span></div>',
       '<div class="answer-controls"><div class="answer-slots" aria-label="解答枠">',
       Array.from({ length: 6 }, function (_, index) {
         var value = state.answer[index] || '';
-        return '<button type="button" data-slot="' + index + '" ' + (!answer || index >= state.answer.length ? 'disabled' : '') + ' aria-label="' + (index + 1) + '番目、' + (value || '未入力') + '"><small>' + (index + 1) + '</small><b>' + escapeHtml(value) + '</b></button>';
+        return '<button type="button" data-slot="' + index + '" ' + (!editable || index >= state.answer.length ? 'disabled' : '') + ' aria-label="' + (index + 1) + '番目、' + (value || '未入力') + '"><small>' + (index + 1) + '</small><b>' + escapeHtml(value) + '</b></button>';
       }).join(''),
       '</div><div class="label-buttons">',
       labels.map(function (label) {
-        return '<button type="button" data-label="' + label + '" ' + (!answer || state.answer.indexOf(label) >= 0 ? 'disabled' : '') + '>' + label + '</button>';
+        return '<button type="button" data-label="' + label + '" ' + (!editable || state.answer.indexOf(label) >= 0 ? 'disabled' : '') + '>' + label + '</button>';
       }).join(''),
-      '</div><button id="submit-answer" class="submit-answer" type="button" ' + (!answer || state.answer.length !== 6 || submitting ? 'disabled' : '') + '>' + (submitting ? '提出中…' : '解答する') + '</button></div>'
+      '</div><button id="submit-answer" class="submit-answer" type="button" ' + (!canSubmit ? 'disabled' : '') + '>' + (submitting ? '提出中…' : state.error ? '提出を再送する' : '解答する') + '</button></div>'
     ].join('');
   }
 
-  function bindAnswerControls() {
+function bindAnswerControls() {
     document.querySelectorAll('[data-label]').forEach(function (button) {
       button.addEventListener('click', function () {
-        if (phaseInfo().phase !== 'answer' || state.answer.indexOf(button.dataset.label) >= 0) return;
+        if (submitting || phaseInfo().phase !== 'answer' || state.answer.indexOf(button.dataset.label) >= 0) return;
         state.answer.push(button.dataset.label);
         persistDraft();
         renderChallenge();
@@ -265,7 +286,7 @@
     });
     document.querySelectorAll('[data-slot]').forEach(function (button) {
       button.addEventListener('click', function () {
-        if (phaseInfo().phase !== 'answer') return;
+        if (submitting || phaseInfo().phase !== 'answer') return;
         state.answer.splice(Number(button.dataset.slot), 1);
         persistDraft();
         renderChallenge();
@@ -304,6 +325,7 @@
     submitting = true;
     state.busy = true;
     state.error = '';
+    stopTimer();
     var payload = {
       attemptId: state.attempt.attemptId,
       attemptToken: state.attempt.attemptToken,
@@ -322,6 +344,9 @@
         clearDraft();
         stopTimer();
         renderResult();
+        window.setTimeout(function () {
+          api('refreshDashboards', {}).catch(function () {});
+        }, 0);
         return;
       } catch (error) {
         lastError = error;
