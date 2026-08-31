@@ -13,7 +13,7 @@ var SHEETS = {
   ACTIVE: '進行中',
   INDIVIDUAL: '個人検索',
   DASHBOARD: '全体ダッシュボード',
-  STREAK: '継続実施者',
+  PROGRESS: '実施状況',
   FOLLOW: '要フォロー生徒'
 };
 
@@ -133,8 +133,7 @@ function verifyStudent_(rawStudentId) {
     studentId: student.studentId,
     fullName: student.fullName,
     campus: student.campus,
-    testMode: testMode,
-    streakDays: getStudentStats_(student.studentId).currentStreak
+    testMode: testMode
   };
 }
 
@@ -228,15 +227,12 @@ function submitAttempt_(body) {
         second: feedbackRule.second
       } : null,
       review: feedbackRule ? buildReview_(question, feedbackRule) : null,
-      elapsedSeconds: Math.min(elapsedSeconds, 600),
-      streakDays: 0
+      elapsedSeconds: Math.min(elapsedSeconds, 600)
     };
 
     var student = getStudent_(active.studentId);
     if (!student) throw appError_('生徒情報を確認できません。', 'STUDENT_NOT_FOUND');
     appendSubmittedAttempt_(active, student, question, result);
-    result.streakDays = getStudentStats_(active.studentId).currentStreak;
-
     updateActiveResult_(active.rowNumber, result);
     return { result: result, duplicate: false };
   } finally {
@@ -465,42 +461,59 @@ function getStudentStats_(studentId, questions, submittedRows, targetDate) {
   var today = targetDate || tokyoDate_();
   var questionSource = questions || getQuestions_();
   var attemptSource = submittedRows || getSubmittedRows_();
-  var questionDates = questionSource.map(function (question) { return question.releaseDate; });
-  var released = questionDates.filter(function (date) { return date <= today; });
-  var rows = attemptSource.filter(function (row) { return row.studentId === studentId; });
-  var completedDates = unique_(rows.map(function (row) { return row.practiceDate; }));
-  var completedSet = {};
-  completedDates.forEach(function (date) { completedSet[date] = true; });
-
-  var currentStreak = 0;
-  var endIndex = completedSet[today] ? released.indexOf(today) : released.reduce(function (last, date, index) {
-    return date < today ? index : last;
-  }, -1);
-  for (var index = endIndex; index >= 0 && completedSet[released[index]]; index -= 1) currentStreak += 1;
-
-  var longestStreak = 0;
-  var running = 0;
-  released.forEach(function (date) {
-    if (completedSet[date]) { running += 1; longestStreak = Math.max(longestStreak, running); }
-    else running = 0;
+  var releasedQuestions = questionSource.filter(function (question) {
+    return question.releaseDate <= today;
+  });
+  var releasedIdSet = {};
+  releasedQuestions.forEach(function (question) {
+    releasedIdSet[question.questionId] = true;
   });
 
-  var inactiveDays = 0;
-  for (var i = released.length - 1; i >= 0; i -= 1) {
-    if (released[i] === today) continue;
-    if (completedSet[released[i]]) break;
-    inactiveDays += 1;
+  var allRows = attemptSource.filter(function (row) {
+    return row.studentId === studentId;
+  });
+  var releasedRows = allRows.filter(function (row) {
+    return releasedIdSet[row.questionId];
+  });
+  var completedIds = unique_(releasedRows.map(function (row) {
+    return row.questionId;
+  }));
+  var completedSet = {};
+  completedIds.forEach(function (questionId) {
+    completedSet[questionId] = true;
+  });
+
+  var correctSet = {};
+  releasedRows.forEach(function (row) {
+    if (row.result === '正解') correctSet[row.questionId] = true;
+  });
+
+  // 要フォローは「今日」を含めず、完了期限を過ぎた問題の連続未実施で判定する。
+  var consecutiveMissedDays = 0;
+  var completedDeadlineQuestions = releasedQuestions.filter(function (question) {
+    return question.releaseDate < today;
+  });
+  for (var index = completedDeadlineQuestions.length - 1; index >= 0; index -= 1) {
+    if (completedSet[completedDeadlineQuestions[index].questionId]) break;
+    consecutiveMissedDays += 1;
   }
-  var correct = rows.filter(function (row) { return row.result === '正解'; }).length;
+
+  var targetDays = releasedQuestions.length;
+  var completedDays = completedIds.length;
+  var correct = Object.keys(correctSet).length;
+  var missedDays = Math.max(0, targetDays - completedDays);
   return {
-    attempts: rows.length,
+    targetDays: targetDays,
+    completedDays: completedDays,
+    attempts: completedDays,
     correct: correct,
-    correctRate: rows.length ? Math.round(correct / rows.length * 100) : 0,
-    currentStreak: currentStreak,
-    longestStreak: longestStreak,
-    inactiveDays: inactiveDays,
-    lastDate: rows.length ? rows.map(function (row) { return row.practiceDate; }).sort().pop() : null,
-    history: rows.sort(function (a, b) { return b.practiceDate.localeCompare(a.practiceDate); })
+    missedDays: missedDays,
+    implementationRate: targetDays ? Math.round(completedDays / targetDays * 100) : 0,
+    correctRate: targetDays ? Math.round(correct / targetDays * 100) : 0,
+    consecutiveMissedDays: consecutiveMissedDays,
+    inactiveDays: consecutiveMissedDays,
+    lastDate: allRows.length ? allRows.map(function (row) { return row.practiceDate; }).sort().pop() : null,
+    history: allRows.sort(function (a, b) { return b.practiceDate.localeCompare(a.practiceDate); })
   };
 }
 
@@ -525,43 +538,98 @@ function refreshDashboards_() {
   var questions = getQuestions_();
   var attempts = getSubmittedRows_();
   var today = tokyoDate_();
+  var activeStudentSet = {};
+  students.forEach(function (student) { activeStudentSet[student.studentId] = true; });
+
   var studentRows = students.map(function (student) {
     return { student: student, stats: getStudentStats_(student.studentId, questions, attempts, today) };
   });
-  var streakRows = studentRows.filter(function (row) { return row.stats.currentStreak >= 5; })
-    .sort(function (a, b) { return b.stats.currentStreak - a.stats.currentStreak; });
-  var followRows = studentRows.filter(function (row) { return row.stats.inactiveDays >= 3; })
-    .sort(function (a, b) { return b.stats.inactiveDays - a.stats.inactiveDays; });
+  var progressRows = studentRows.slice().sort(function (a, b) {
+    return a.stats.implementationRate - b.stats.implementationRate ||
+      b.stats.missedDays - a.stats.missedDays ||
+      a.student.campus.localeCompare(b.student.campus, 'ja') ||
+      a.student.fullName.localeCompare(b.student.fullName, 'ja');
+  });
+  var followRows = studentRows.filter(function (row) {
+    return row.stats.consecutiveMissedDays >= 3;
+  }).sort(function (a, b) {
+    return b.stats.consecutiveMissedDays - a.stats.consecutiveMissedDays ||
+      a.stats.implementationRate - b.stats.implementationRate ||
+      a.student.campus.localeCompare(b.student.campus, 'ja') ||
+      a.student.fullName.localeCompare(b.student.fullName, 'ja');
+  });
+
+  var targetDays = studentRows.length ? studentRows[0].stats.targetDays :
+    questions.filter(function (question) { return question.releaseDate <= today; }).length;
+  var totalTarget = students.length * targetDays;
+  var totalCompleted = studentRows.reduce(function (sum, row) {
+    return sum + row.stats.completedDays;
+  }, 0);
+  var totalCorrect = studentRows.reduce(function (sum, row) {
+    return sum + row.stats.correct;
+  }, 0);
+  var releasedIdSet = {};
+  questions.filter(function (question) {
+    return question.releaseDate <= today;
+  }).forEach(function (question) {
+    releasedIdSet[question.questionId] = true;
+  });
+  var todayStudents = unique_(attempts.filter(function (row) {
+    return row.practiceDate === today && activeStudentSet[row.studentId] && releasedIdSet[row.questionId];
+  }).map(function (row) {
+    return row.studentId;
+  })).length;
 
   var dashboard = requiredSheet_(SHEETS.DASHBOARD);
   dashboard.getRange('B4:B8').setValues([
     [students.length],
-    [unique_(attempts.filter(function (row) { return row.practiceDate === today; }).map(function (row) { return row.studentId; })).length],
-    [streakRows.length], [followRows.length], [attempts.length]
+    [targetDays],
+    [todayStudents],
+    [totalCompleted + ' / ' + totalTarget],
+    [totalCorrect + ' / ' + totalTarget]
   ]);
   dashboard.getRange('D4:H200').clearContent();
   var questionStats = questions.map(function (question) {
-    var rows = attempts.filter(function (row) { return row.questionId === question.questionId; });
+    var rows = attempts.filter(function (row) {
+      return row.questionId === question.questionId && activeStudentSet[row.studentId];
+    });
     var correct = rows.filter(function (row) { return row.result === '正解'; }).length;
-    return [question.questionId, question.title, rows.length, rows.length ? Math.round(correct / rows.length * 100) + '%' : '—', rows.filter(function (row) { return row.timedOut; }).length];
+    return [
+      question.questionId,
+      question.title,
+      rows.length,
+      correct,
+      rows.filter(function (row) { return row.timedOut; }).length
+    ];
   });
   if (questionStats.length) dashboard.getRange(4, 4, questionStats.length, 5).setValues(questionStats);
 
-  writeProgressSheet_(requiredSheet_(SHEETS.STREAK), streakRows, true);
-  writeProgressSheet_(requiredSheet_(SHEETS.FOLLOW), followRows, false);
+  writeProgressSheet_(requiredSheet_(SHEETS.PROGRESS), progressRows, false);
+  writeProgressSheet_(requiredSheet_(SHEETS.FOLLOW), followRows, true);
 }
 
-function writeProgressSheet_(sheet, rows, isStreak) {
-  sheet.getRange('A5:F1000').clearContent();
+function writeProgressSheet_(sheet, rows, isFollow) {
+  sheet.getRange('A5:I1000').clearContent();
   if (!rows.length) return;
-  sheet.getRange(5, 1, rows.length, 6).setValues(rows.map(function (row) {
+  sheet.getRange(5, 1, rows.length, 9).setValues(rows.map(function (row) {
+    var stats = row.stats;
     return [
-      row.student.studentId, row.student.fullName, row.student.campus,
-      isStreak ? row.stats.currentStreak : row.stats.inactiveDays,
-      row.stats.attempts, row.stats.correctRate + '%'
+      row.student.studentId,
+      row.student.fullName,
+      row.student.campus,
+      stats.completedDays + ' / ' + stats.targetDays,
+      stats.correct + ' / ' + stats.targetDays,
+      (isFollow ? stats.consecutiveMissedDays : stats.missedDays) + '日',
+      rateText_(stats.implementationRate, stats.targetDays),
+      rateText_(stats.correctRate, stats.targetDays),
+      stats.lastDate || '—'
     ];
   }));
   sheet.getRange('A5:A1000').setNumberFormat('@');
+}
+
+function rateText_(rate, targetDays) {
+  return targetDays ? rate + '%' : '—';
 }
 
 function refreshIndividualSearch() {
@@ -578,8 +646,14 @@ function refreshIndividualSearch() {
   }
   var stats = getStudentStats_(studentId);
   sheet.getRange('B5:B12').setValues([
-    [student.fullName], [student.campus], [stats.attempts], [stats.correct], [stats.correctRate + '%'],
-    [stats.currentStreak + '日'], [stats.longestStreak + '日'], [stats.inactiveDays + '日']
+    [student.fullName],
+    [student.campus],
+    [stats.targetDays + '日'],
+    [stats.completedDays + ' / ' + stats.targetDays],
+    [stats.correct + ' / ' + stats.targetDays],
+    [stats.missedDays + '日'],
+    [rateText_(stats.implementationRate, stats.targetDays)],
+    [rateText_(stats.correctRate, stats.targetDays)]
   ]);
   if (stats.history.length) {
     sheet.getRange(15, 1, stats.history.length, 6).setValues(stats.history.map(function (row) {
