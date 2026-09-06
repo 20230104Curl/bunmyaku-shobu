@@ -338,18 +338,30 @@ function bindAnswerControls() {
     if (info.phase === 'locked') submitAttempt(new Date().toISOString());
   }
 
+  function pendingSubmission() {
+    try {
+      var payload = JSON.parse(localStorage.getItem(PENDING_KEY) || 'null');
+      if (payload && state.attempt &&
+          payload.attemptId === state.attempt.attemptId &&
+          payload.attemptToken === state.attempt.attemptToken &&
+          Array.isArray(payload.answer) && isFinite(Date.parse(payload.lockedAt))) return payload;
+    } catch (error) {}
+    return null;
+  }
+
   async function submitAttempt(lockedAt) {
     if (submitting || !state.attempt) return;
     submitting = true;
     state.busy = true;
     state.error = '';
     stopTimer();
-    var payload = {
+    var payload = pendingSubmission() || {
       attemptId: state.attempt.attemptId,
       attemptToken: state.attempt.attemptToken,
       answer: state.answer.slice(),
       lockedAt: lockedAt
     };
+    state.answer = payload.answer.slice();
     localStorage.setItem(PENDING_KEY, JSON.stringify(payload));
     renderChallenge();
     var lastError = null;
@@ -487,12 +499,12 @@ function bindAnswerControls() {
         state.attempt = draft.attempt;
         state.answer = Array.isArray(draft.answer) ? draft.answer : [];
         state.studentId = draft.studentId || '';
-        renderChallenge();
-        startTimer();
-        var pending = localStorage.getItem(PENDING_KEY);
+        var pending = pendingSubmission();
         if (pending) {
-          var payload = JSON.parse(pending);
-          submitAttempt(payload.lockedAt || new Date().toISOString());
+          await submitAttempt(pending.lockedAt);
+        } else {
+          renderChallenge();
+          startTimer();
         }
         return;
       } catch (error) {
