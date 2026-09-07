@@ -208,3 +208,20 @@ button:focus-visible, input:focus-visible { outline: 3px solid rgba(213, 166, 59
   .result-card h1 { font-size: 42px; }
   .confirm-actions, .result-actions { grid-template-columns: 1fr; }
 }
+
+/* 前日の結果は割合だけを生徒情報の確認画面に表示する。 */
+.yesterday-accuracy {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin: 18px 0;
+  padding: 14px 18px;
+  border: 1px solid #c6dcd3;
+  border-radius: 12px;
+  background: #edf5f1;
+  color: #154a3a;
+}
+.yesterday-accuracy > span { font-size: 16px; font-weight: 700; }
+.yesterday-accuracy > b { font-size: 32px; line-height: 1.2; }
+.yesterday-accuracy small { font-size: 18px; margin-left: 3px; }
