@@ -133,8 +133,32 @@ function verifyStudent_(rawStudentId) {
     studentId: student.studentId,
     fullName: student.fullName,
     campus: student.campus,
-    testMode: testMode
+    testMode: testMode,
+    yesterdayAccuracy: yesterdayAccuracy_(config)
   };
+}
+
+
+function yesterdayAccuracy_(config) {
+  // 日本時間の暦日を基準に前日を求める。
+  var date = new Date(tokyoDate_() + 'T00:00:00+09:00');
+  date.setTime(date.getTime() - 24 * 60 * 60 * 1000);
+  var yesterday = Utilities.formatDate(date, 'Asia/Tokyo', 'yyyy-MM-dd');
+  var question = getQuestionForDate_(yesterday);
+  if (!question) return null;
+  var testId = String(config.TEST_STUDENT_ID);
+  var seen = {};
+  var total = 0;
+  var correct = 0;
+  getSubmittedRows_().forEach(function (row) {
+    if (row.practiceDate !== yesterday || row.questionId !== question.questionId ||
+        !row.studentId || row.studentId === testId || seen[row.studentId]) return;
+    seen[row.studentId] = true;
+    total += 1;
+    if (row.result === '正解' && !row.timedOut) correct += 1;
+  });
+  // 生徒向けには人数や個人情報を返さない。
+  return total ? { date: yesterday, rate: Math.round(correct / total * 100) } : null;
 }
 
 function startAttempt_(rawStudentId) {
