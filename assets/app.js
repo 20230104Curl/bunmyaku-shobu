@@ -172,12 +172,20 @@ function periodText() {
     });
   }
 
+  function yesterdayAccuracyHtml(summary) {
+    if (!summary || typeof summary.rate !== 'number' ||
+        !isFinite(summary.rate) || summary.rate < 0 || summary.rate > 100) return '';
+    return '<div class="yesterday-accuracy"><span>昨日の正解率</span><b>' +
+      escapeHtml(summary.rate) + '<small>％</small></b></div>';
+  }
+
   function studentConfirmationHtml(student) {
     return [
       '<div class="student-confirm"><span>生徒情報を確認してください</span>',
       '<strong>' + escapeHtml(student.fullName) + '</strong>',
       student.campus ? '<p>' + escapeHtml(student.campus) + '</p>' : '',
       student.testMode ? '<p class="test-note">テスト実施｜提出内容は実施記録に保存されます</p>' : '',
+      yesterdayAccuracyHtml(student.yesterdayAccuracy),
       '<div class="confirm-actions">',
       '<button id="confirm-start" type="button" class="confirm-start" ' + (state.busy ? 'disabled' : '') + '>' + (state.busy ? '開始準備中…' : 'この生徒で始める') + '</button>',
       '<button id="confirm-back" type="button" class="confirm-back" ' + (state.busy ? 'disabled' : '') + '>入力し直す</button>',
