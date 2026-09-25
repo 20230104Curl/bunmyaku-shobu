@@ -233,6 +233,7 @@ function activateAttempt_(body) {
       var elapsed = Number(body.elapsedSeconds);
       if (!isFinite(elapsed) || elapsed < 0 || elapsed > 86400) throw appError_('開始情報を確認できません。', 'INVALID_TIMING');
       var started = new Date(Date.now() - elapsed * 1000);
+      requiredSheet_(SHEETS.ACTIVE).getRange(active.rowNumber, 6).setNumberFormat('yyyy/MM/dd HH:mm:ss');
       requiredSheet_(SHEETS.ACTIVE).getRange(active.rowNumber, 6, 1, 2).setValues([[started, 'started']]);
       active.startedAt = started.toISOString();
       active.status = 'started';
