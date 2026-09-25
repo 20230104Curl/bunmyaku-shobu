@@ -4,6 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "test": "node tests/validate.mjs"
+    "test": "node tests/validate.mjs && node --test --test-isolation=none tests/reliability.cjs"
   }
 }
+
