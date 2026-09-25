@@ -7,6 +7,25 @@
   var PENDING_KEY = DRAFT_KEY + '-pending';
   var timerId = null;
   var submitting = false;
+  var pendingMemory = null;
+  var clockAnchor = null;
+  var activation = null;
+
+  function storageRead(key) { try { return localStorage.getItem(key); } catch (e) { return null; } }
+  function storageWrite(key, value) { try { localStorage.setItem(key, value); return true; } catch (e) { return false; } }
+  function storageRemove(key) { try { localStorage.removeItem(key); } catch (e) {} }
+  function setClock(elapsed) { clockAnchor = { at: performance.now(), elapsed: Math.max(0, Number(elapsed) || 0) }; }
+  function elapsedTime() { return clockAnchor ? clockAnchor.elapsed + Math.max(0, performance.now() - clockAnchor.at) / 1000 : 0; }
+
+  async function ensureActivated() {
+    if (!state.attempt || state.attempt.startedAt) return;
+    if (activation) return activation;
+    activation = api('activateAttempt', {
+      attemptId: state.attempt.attemptId, attemptToken: state.attempt.attemptToken,
+      elapsedSeconds: elapsedTime()
+    }).then(function (response) { state.attempt.startedAt = response.startedAt; persistDraft(); });
+    try { await activation; } finally { activation = null; }
+  }
 
   var state = {
     status: null,
@@ -72,7 +91,7 @@
       return body.data;
     } catch (error) {
       if (error && error.name === 'AbortError') {
-        throw new Error('通信に時間がかかっています。自動的に再接続します。');
+        throw new Error('通信に時間がかかっています。通信を確認して、もう一度お試しください。');
       }
       throw error;
     } finally {
@@ -94,7 +113,7 @@ function periodText() {
 
   function phaseInfo() {
     if (!state.attempt) return { phase: 'none', remaining: 0, elapsed: 0 };
-    var elapsed = Math.max(0, (Date.now() - new Date(state.attempt.startedAt).getTime()) / 1000);
+    var elapsed = elapsedTime();
     var t = timing();
     var phase = elapsed < t.readingSeconds ? 'reading' : elapsed < t.totalSeconds ? 'answer' : 'locked';
     var end = phase === 'reading' ? t.readingSeconds : t.totalSeconds;
@@ -112,7 +131,7 @@ function periodText() {
 
   function persistDraft() {
     if (!state.attempt) return;
-    localStorage.setItem(DRAFT_KEY, JSON.stringify({
+    storageWrite(DRAFT_KEY, JSON.stringify({
       attempt: state.attempt,
       answer: state.answer,
       studentId: state.studentId
@@ -120,8 +139,9 @@ function periodText() {
   }
 
   function clearDraft() {
-    localStorage.removeItem(DRAFT_KEY);
-    localStorage.removeItem(PENDING_KEY);
+    storageRemove(DRAFT_KEY);
+    storageRemove(PENDING_KEY);
+    pendingMemory = null;
   }
 
   function renderEntry() {
@@ -214,15 +234,19 @@ function periodText() {
     state.error = '';
     renderEntry();
     try {
-      state.attempt = await api('startAttempt', { studentId: state.studentId });
+      state.attempt = await api('startAttempt', { studentId: state.studentId, timerVersion: 2 });
+      if (!state.attempt.timerVersion) throw new Error('アプリを更新中です。少し待ってから入り直してください。');
       state.answer = [];
       state.result = null;
       state.finished = false;
       state.lastPhase = null;
       state.busy = false;
+      pendingMemory = null;
+      setClock(state.attempt.elapsedSeconds);
       persistDraft();
       renderChallenge();
       startTimer();
+      ensureActivated().catch(function () { /* Retried before submission. */ });
     } catch (error) {
       state.error = error.message;
       state.busy = false;
@@ -251,7 +275,7 @@ function periodText() {
       question.paragraphs.map(function (paragraph) {
         var selectedIndex = state.answer.indexOf(paragraph.label);
         var selected = selectedIndex >= 0;
-        var editable = info.phase === 'answer' && !submitting;
+        var editable = info.phase === 'answer' && !submitting && !pendingSubmission();
         var classes = 'paragraph-card' + (editable ? ' is-selectable' : '') + (selected ? ' is-selected' : '');
         var interaction = editable
           ? ' data-paragraph-label="' + escapeHtml(paragraph.label) + '" role="button" tabindex="0" aria-pressed="' + selected + '" aria-label="' + escapeHtml(paragraph.label) + 'の段落、' + (selected ? (selectedIndex + 1) + '番目に選択済み。もう一度押すと取り消します' : 'クリックして選択します') + '"'
@@ -271,7 +295,7 @@ function periodText() {
 
   function answerDockHtml(phase) {
     var reading = phase === 'reading';
-    var editable = phase === 'answer' && !submitting;
+    var editable = phase === 'answer' && !submitting && !pendingSubmission();
     var timeConfig = timing();
     var readingLabel = durationLabel(timeConfig.readingSeconds);
     var canSubmit = !submitting && (
@@ -280,7 +304,7 @@ function periodText() {
     );
     return [
       '<div class="answer-heading"><strong>' + (submitting ? '解答を送信しています' : reading ? readingLabel + '間で文章の流れを考えよう' : '文章カードを正しい順にクリックしよう') + '</strong>',
-      '<span>' + (submitting ? '送信が完了すると結果画面へ切り替わります' : reading ? timeConfig.readingSeconds + '秒後に解答できます' : '選んだカードをもう一度押すと取り消せます') + '</span></div>',
+      '<span>' + (submitting ? '送信が完了すると結果画面へ切り替わります' : reading ? timeConfig.readingSeconds + '秒後に解答できます' : '選び終えたら、時間内に「解答する」を押してください') + '</span></div>',
       '<div class="answer-controls"><div class="answer-slots" aria-label="解答枠">',
       Array.from({ length: 6 }, function (_, index) {
         var value = state.answer[index] || '';
@@ -292,7 +316,7 @@ function periodText() {
 
 function bindAnswerControls() {
     function toggleParagraph(label) {
-      if (submitting || phaseInfo().phase !== 'answer') return;
+      if (submitting || pendingSubmission() || phaseInfo().phase !== 'answer') return;
       var selectedIndex = state.answer.indexOf(label);
       if (selectedIndex >= 0) state.answer.splice(selectedIndex, 1);
       else if (state.answer.length < 6) state.answer.push(label);
@@ -312,14 +336,14 @@ function bindAnswerControls() {
     });
     document.querySelectorAll('[data-slot]').forEach(function (button) {
       button.addEventListener('click', function () {
-        if (submitting || phaseInfo().phase !== 'answer') return;
+        if (submitting || pendingSubmission() || phaseInfo().phase !== 'answer') return;
         state.answer.splice(Number(button.dataset.slot), 1);
         persistDraft();
         renderChallenge();
       });
     });
     var submit = document.getElementById('submit-answer');
-    if (submit) submit.addEventListener('click', function () { submitAttempt(new Date().toISOString()); });
+    if (submit) submit.addEventListener('click', function () { submitAttempt(); });
   }
 
   function startTimer() {
@@ -338,26 +362,26 @@ function bindAnswerControls() {
     var info = phaseInfo();
     if (info.phase !== state.lastPhase) {
       renderChallenge();
-      if (info.phase === 'locked') submitAttempt(new Date().toISOString());
+      if (info.phase === 'locked') submitAttempt();
       return;
     }
     var timer = document.getElementById('timer');
     if (timer) timer.textContent = formatClock(info.remaining);
-    if (info.phase === 'locked') submitAttempt(new Date().toISOString());
+    if (info.phase === 'locked') submitAttempt();
   }
 
   function pendingSubmission() {
     try {
-      var payload = JSON.parse(localStorage.getItem(PENDING_KEY) || 'null');
+      var payload = pendingMemory || JSON.parse(storageRead(PENDING_KEY) || 'null');
       if (payload && state.attempt &&
           payload.attemptId === state.attempt.attemptId &&
           payload.attemptToken === state.attempt.attemptToken &&
-          Array.isArray(payload.answer) && isFinite(Date.parse(payload.lockedAt))) return payload;
+          Array.isArray(payload.answer) && (isFinite(payload.elapsedSeconds) || isFinite(Date.parse(payload.lockedAt)))) return payload;
     } catch (error) {}
     return null;
   }
 
-  async function submitAttempt(lockedAt) {
+  async function submitAttempt() {
     if (submitting || !state.attempt) return;
     submitting = true;
     state.busy = true;
@@ -367,14 +391,17 @@ function bindAnswerControls() {
       attemptId: state.attempt.attemptId,
       attemptToken: state.attempt.attemptToken,
       answer: state.answer.slice(),
-      lockedAt: lockedAt
+      elapsedSeconds: elapsedTime(),
+      lockedAt: new Date(new Date(state.attempt.startedAt || 0).getTime() + elapsedTime() * 1000).toISOString()
     };
     state.answer = payload.answer.slice();
-    localStorage.setItem(PENDING_KEY, JSON.stringify(payload));
+    pendingMemory = payload;
+    storageWrite(PENDING_KEY, JSON.stringify(payload));
     renderChallenge();
     var lastError = null;
     for (var attemptNumber = 1; attemptNumber <= 5; attemptNumber += 1) {
       try {
+        await ensureActivated();
         var response = await api('submitAttempt', payload);
         state.result = response.result;
         state.busy = false;
@@ -500,23 +527,41 @@ function bindAnswerControls() {
       return;
     }
 
-    var saved = localStorage.getItem(DRAFT_KEY);
+    var saved = storageRead(DRAFT_KEY);
     if (saved) {
       try {
         var draft = JSON.parse(saved);
+        if (!draft.attempt || draft.attempt.practiceDate !== state.status.today) {
+          clearDraft();
+          state.notice = '生徒IDを入力して、今日の学習を始めてください。';
+          renderEntry();
+          return;
+        }
         state.attempt = draft.attempt;
         state.answer = Array.isArray(draft.answer) ? draft.answer : [];
         state.studentId = draft.studentId || '';
         var pending = pendingSubmission();
         if (pending) {
-          await submitAttempt(pending.lockedAt);
+          setClock(pending.elapsedSeconds);
+          await submitAttempt();
         } else {
+          state.attempt = await api('resumeAttempt', { attemptId: state.attempt.attemptId, attemptToken: state.attempt.attemptToken });
+          setClock(state.attempt.elapsedSeconds);
+          if (state.attempt.result) {
+            state.result = state.attempt.result;
+            clearDraft();
+            renderResult();
+            return;
+          }
           renderChallenge();
           startTimer();
+          ensureActivated().catch(function () {});
         }
         return;
       } catch (error) {
-        clearDraft();
+        // Preserve the saved attempt on a temporary network failure.
+        if (error.code === 'STALE_ATTEMPT' || error.code === 'ATTEMPT_NOT_FOUND') clearDraft();
+        state.error = error.message;
       }
     }
     renderEntry();
@@ -524,3 +569,4 @@ function bindAnswerControls() {
 
   bootstrap();
 })();
+
