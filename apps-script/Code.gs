@@ -92,7 +92,13 @@ function doPost(e) {
         result = verifyStudent_(body.studentId);
         break;
       case 'startAttempt':
-        result = startAttempt_(body.studentId);
+        result = startAttempt_(body.studentId, body.timerVersion);
+        break;
+      case 'activateAttempt':
+        result = activateAttempt_(body);
+        break;
+      case 'resumeAttempt':
+        result = resumeAttempt_(body);
         break;
       case 'submitAttempt':
         result = submitAttempt_(body);
@@ -113,6 +119,7 @@ function status_() {
   var config = getConfig_();
   var today = tokyoDate_();
   return {
+    reliabilityVersion: '20260925-1',
     today: today,
     available: Boolean(getQuestionForDate_(today)),
     period: { start: config.PERIOD_START, end: config.PERIOD_END },
@@ -161,7 +168,7 @@ function yesterdayAccuracy_(config) {
   return total ? { date: yesterday, rate: Math.round(correct / total * 100) } : null;
 }
 
-function startAttempt_(rawStudentId) {
+function startAttempt_(rawStudentId, timerVersion) {
   var lock = LockService.getDocumentLock();
   lock.waitLock(20000);
   try {
@@ -196,8 +203,9 @@ function startAttempt_(rawStudentId) {
       studentId: studentId,
       questionId: question.questionId,
       practiceDate: today,
-      startedAt: new Date().toISOString(),
-      status: 'started',
+      startedAt: Number(timerVersion) === 2 ? '' : new Date().toISOString(),
+      status: Number(timerVersion) === 2 ? 'prepared' : 'started',
+      timerVersion: Number(timerVersion) === 2 ? 2 : 1,
       resultJson: '',
       testMode: testMode
     };
@@ -206,6 +214,39 @@ function startAttempt_(rawStudentId) {
   } finally {
     lock.releaseLock();
   }
+}
+
+function authorizedAttempt_(body) {
+  var active = getActiveAttemptById_(String(body.attemptId || ''));
+  if (!active || active.attemptToken !== body.attemptToken) throw appError_('実施情報を確認できません。', 'ATTEMPT_NOT_FOUND');
+  return active;
+}
+
+// Start only after the browser has received and rendered the question.
+// The small request transit time is never taken out of the child's reading time.
+function activateAttempt_(body) {
+  var lock = LockService.getDocumentLock();
+  lock.waitLock(20000);
+  try {
+    var active = authorizedAttempt_(body);
+    if (active.status === 'prepared') {
+      var elapsed = Number(body.elapsedSeconds);
+      if (!isFinite(elapsed) || elapsed < 0 || elapsed > 86400) throw appError_('開始情報を確認できません。', 'INVALID_TIMING');
+      var started = new Date(Date.now() - elapsed * 1000);
+      requiredSheet_(SHEETS.ACTIVE).getRange(active.rowNumber, 6, 1, 2).setValues([[started, 'started']]);
+      active.startedAt = started.toISOString();
+      active.status = 'started';
+    }
+    return { startedAt: active.startedAt, timerVersion: active.timerVersion };
+  } finally { lock.releaseLock(); }
+}
+
+function resumeAttempt_(body) {
+  var active = authorizedAttempt_(body);
+  if (active.practiceDate !== tokyoDate_()) throw appError_('前日の問題は再開できません。生徒IDから入り直してください。', 'STALE_ATTEMPT');
+  var student = getStudent_(active.studentId);
+  if (!student || !student.active) throw appError_('この生徒IDは現在利用できません。', 'INACTIVE');
+  return attemptResponse_(active, getQuestionById_(active.questionId), student, active.testMode, true, getConfig_());
 }
 
 function submitAttempt_(body) {
@@ -217,13 +258,19 @@ function submitAttempt_(body) {
     if (!active || active.attemptToken !== String(body.attemptToken)) {
       throw appError_('実施情報を確認できません。', 'ATTEMPT_NOT_FOUND');
     }
-    if (active.status === 'submitted' && active.resultJson) {
-      return { result: JSON.parse(active.resultJson), duplicate: true };
-    }
-
     var config = getConfig_();
     var question = getQuestionById_(active.questionId);
     if (!question) throw appError_('問題データを確認できません。', 'QUESTION_NOT_FOUND');
+
+    // Check the destination as well as the active row: an append may have
+    // succeeded even when the next write/HTTP response failed.
+    var savedRow = getSubmittedRows_().filter(function (row) { return row.attemptId === active.attemptId; })[0];
+    if (savedRow) {
+      var savedResult = active.resultJson ? JSON.parse(active.resultJson) : resultFromSubmitted_(savedRow, question);
+      updateActiveResult_(active.rowNumber, savedResult);
+      return { result: savedResult, duplicate: true };
+    }
+    if (active.status === 'prepared') throw appError_('開始を確認しています。もう一度送信してください。', 'NOT_STARTED');
 
     var answer = Array.isArray(body.answer) ? body.answer.map(String).filter(function (label) {
       return LABELS.indexOf(label) >= 0;
@@ -234,6 +281,17 @@ function submitAttempt_(body) {
     var locked = body.lockedAt ? new Date(body.lockedAt).getTime() : now;
     var validLockedAt = isFinite(locked) && locked >= started && locked <= now + 5000;
     var elapsedSeconds = Math.max(0, Math.floor(((validLockedAt ? locked : now) - started) / 1000));
+    if (active.timerVersion === 2) {
+      var measured = Number(body.elapsedSeconds);
+      // Request/lock delays at activation must not reject an honest answer.
+      // As with legacy lockedAt, the browser supplies the frozen submission
+      // time; excessively large values cannot improve a result.
+      if (!isFinite(measured) || measured < 0 || measured > 86400) {
+        throw appError_('解答時間を確認できません。画面を閉じずに再送してください。', 'INVALID_TIMING');
+      }
+      elapsedSeconds = Math.floor(measured);
+      if (complete && elapsedSeconds < Number(config.READING_SECONDS)) throw appError_('読解時間が終わってから解答してください。', 'TOO_EARLY');
+    }
     var timeLimit = Number(config.TOTAL_SECONDS);
     var timedOut = !complete || elapsedSeconds >= timeLimit;
     var correct = complete && !timedOut && answer.join(',') === question.correctOrder.join(',');
@@ -255,6 +313,11 @@ function submitAttempt_(body) {
       elapsedSeconds: Math.min(elapsedSeconds, 600)
     };
 
+    // Write ahead: retries use the first grading decision, even if the
+    // result append fails or a different payload is retried later.
+    if (active.resultJson) result = JSON.parse(active.resultJson);
+    else requiredSheet_(SHEETS.ACTIVE).getRange(active.rowNumber, 7, 1, 2).setValues([['saving', JSON.stringify(result)]]);
+
     var student = getStudent_(active.studentId);
     if (!student) throw appError_('生徒情報を確認できません。', 'STUDENT_NOT_FOUND');
     appendSubmittedAttempt_(active, student, question, result);
@@ -263,6 +326,15 @@ function submitAttempt_(body) {
   } finally {
     lock.releaseLock();
   }
+}
+
+function resultFromSubmitted_(row, question) {
+  var rule = question.feedbackRules.filter(function (item) { return Number(item.priority) === row.feedbackPriority; })[0] || null;
+  return { correct: row.result === '正解', timedOut: row.timedOut,
+    answer: row.answer ? row.answer.split(/\s*→\s*/) : [],
+    correctOrder: row.correctOrder.split(/\s*→\s*/), elapsedSeconds: row.elapsedSeconds,
+    feedbackRule: rule ? { priority: rule.priority, explanation: rule.explanation, first: rule.first, second: rule.second } : null,
+    review: rule ? buildReview_(question, rule) : null };
 }
 
 function getConfig_() {
@@ -336,6 +408,10 @@ function attemptResponse_(attempt, question, student, testMode, resumed, config)
     attemptId: attempt.attemptId,
     attemptToken: attempt.attemptToken,
     startedAt: attempt.startedAt,
+    timerVersion: attempt.timerVersion || 1,
+    practiceDate: attempt.practiceDate,
+    elapsedSeconds: attempt.startedAt ? Math.max(0, (Date.now() - new Date(attempt.startedAt).getTime()) / 1000) : 0,
+    result: attempt.status === 'submitted' && attempt.resultJson ? JSON.parse(attempt.resultJson) : null,
     question: {
       questionId: question.questionId,
       releaseDate: question.releaseDate,
@@ -359,16 +435,17 @@ function timingConfig_(config) {
 
 function appendActiveAttempt_(attempt) {
   var sheet = requiredSheet_(SHEETS.ACTIVE);
+  if (!sheet.getRange(1, 10).getValue()) sheet.getRange(1, 10).setValue('計時方式');
   sheet.appendRow([
     attempt.attemptId, attempt.attemptToken, attempt.studentId, attempt.questionId,
-    attempt.practiceDate, new Date(attempt.startedAt), attempt.status, attempt.resultJson, attempt.testMode
+    attempt.practiceDate, attempt.startedAt ? new Date(attempt.startedAt) : '', attempt.status, attempt.resultJson, attempt.testMode, attempt.timerVersion || 1
   ]);
 }
 
 function getActiveAttempts_() {
   var sheet = requiredSheet_(SHEETS.ACTIVE);
   if (sheet.getLastRow() < 2) return [];
-  return sheet.getRange(2, 1, sheet.getLastRow() - 1, 9).getValues().map(function (row, index) {
+  return sheet.getRange(2, 1, sheet.getLastRow() - 1, 10).getValues().map(function (row, index) {
     return {
       rowNumber: index + 2,
       attemptId: String(row[0]),
@@ -379,6 +456,7 @@ function getActiveAttempts_() {
       startedAt: row[5] instanceof Date ? row[5].toISOString() : String(row[5]),
       status: String(row[6]),
       resultJson: String(row[7] || ''),
+      timerVersion: Number(row[9]) || 1,
       testMode: row[8] === true || String(row[8]).toLowerCase() === 'true'
     };
   });
@@ -390,7 +468,7 @@ function getActiveAttemptById_(attemptId) {
 
 function getActiveAttemptForStudent_(studentId, questionId) {
   return getActiveAttempts_().filter(function (attempt) {
-    return attempt.studentId === studentId && attempt.questionId === questionId && attempt.status === 'started';
+    return attempt.studentId === studentId && attempt.questionId === questionId && ['prepared', 'started', 'saving'].indexOf(attempt.status) >= 0;
   })[0] || null;
 }
 
@@ -753,3 +831,4 @@ function jsonOutput_(payload) {
   return ContentService.createTextOutput(JSON.stringify(payload))
     .setMimeType(ContentService.MimeType.JSON);
 }
+
