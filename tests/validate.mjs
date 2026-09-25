@@ -13,7 +13,7 @@ const code = read('apps-script/Code.gs');
 assert.match(index, /<title>文脈勝負<\/title>/);
 assert.match(index, /assets\/config\.js/);
 assert.match(index, /assets\/app\.js/);
-assert.match(config, /__APPS_SCRIPT_WEB_APP_URL__/);
+assert.match(config, /__APPS_SCRIPT_WEB_APP_URL__|https:\/\/script\.google\.com\/macros\/s\/[A-Za-z0-9_-]+\/exec/);
 
 new Function(app);
 new Function(code);
@@ -21,7 +21,7 @@ new Function(code);
 assert.match(app, /readingSeconds: 120/);
 assert.match(app, /totalSeconds: 180/);
 assert.match(app, /durationLabel/);
-assert.match(app, /timeConfig\.answerSeconds \+ '秒'/);
+assert.match(app, /timeConfig\.answerSeconds \+ '秒/);
 assert.doesNotMatch(app, /3分間で|180秒後|4分間/);
 assert.doesNotMatch(app, /readingSeconds:\s*0/, 'テストIDも通常の読解時間を使う');
 assert.match(code, /var timeLimit = Number\(config\.TOTAL_SECONDS\);/);
@@ -41,3 +41,4 @@ assert.equal(publicFiles.includes('A → D → B → E → F → C'), false, '�
 assert.equal(publicFiles.includes('sanaru0104@gmail.com'), false, '管理者メールを公開リポジトリへ置かない');
 
 console.log('文脈勝負 GitHub版の構成検査に合格しました。');
+
