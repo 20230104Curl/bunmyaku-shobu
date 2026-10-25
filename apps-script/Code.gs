@@ -1,3 +1,20 @@
+
+/**
+ * 2026年11月以降は継続希望登録済みの生徒だけが利用可能。
+ * 既存名簿と同じスプレッドシートの「継続登録」を参照。
+ * 初期設定・結線前は登録台帳がなく、11月以降は許可しない（fail closed）。
+ */
+function ensureContinuationAllowed_(studentId) {
+  if (tokyoDate_() < '2026-11-01') return;
+  var sheet = SpreadsheetApp.openById(PropertiesService.getScriptProperties().getProperty('SPREADSHEET_ID')).getSheetByName('継続登録');
+  if (!sheet || sheet.getLastRow() < 2) throw appError_('継続利用の登録が必要です。', 'CONTINUATION_REQUIRED');
+  var rows = sheet.getRange(2, 1, sheet.getLastRow() - 1, 4).getValues();
+  var row = rows.filter(function(row) { return String(row[0]) === String(studentId); })[0];
+  if (!row || row[2] !== true || row[3] === true) {
+    throw appError_('継続利用の登録が必要です。', 'CONTINUATION_REQUIRED');
+  }
+}
+
 /**
  * 文脈勝負｜Google スプレッドシート連携 API
  *
@@ -135,6 +152,7 @@ function verifyStudent_(rawStudentId) {
   var student = getStudent_(studentId);
   if (!student) throw appError_('この生徒IDは登録されていません。先生に確認してください。', 'NOT_REGISTERED');
   if (!student.active) throw appError_('この生徒IDは現在利用できません。先生に確認してください。', 'INACTIVE');
+  ensureContinuationAllowed_(studentId);
 
   return {
     studentId: student.studentId,
@@ -178,6 +196,7 @@ function startAttempt_(rawStudentId, timerVersion) {
     var student = getStudent_(studentId);
     if (!student) throw appError_('この生徒IDは登録されていません。先生に確認してください。', 'NOT_REGISTERED');
     if (!student.active) throw appError_('この生徒IDは現在利用できません。先生に確認してください。', 'INACTIVE');
+  ensureContinuationAllowed_(studentId);
 
     var today = tokyoDate_();
     var question = getQuestionForDate_(today);
@@ -229,6 +248,7 @@ function activateAttempt_(body) {
   lock.waitLock(20000);
   try {
     var active = authorizedAttempt_(body);
+    ensureContinuationAllowed_(active.studentId);
     if (active.status === 'prepared') {
       var elapsed = Number(body.elapsedSeconds);
       if (!isFinite(elapsed) || elapsed < 0 || elapsed > 86400) throw appError_('開始情報を確認できません。', 'INVALID_TIMING');
@@ -247,6 +267,7 @@ function resumeAttempt_(body) {
   if (active.practiceDate !== tokyoDate_()) throw appError_('前日の問題は再開できません。生徒IDから入り直してください。', 'STALE_ATTEMPT');
   var student = getStudent_(active.studentId);
   if (!student || !student.active) throw appError_('この生徒IDは現在利用できません。', 'INACTIVE');
+  ensureContinuationAllowed_(active.studentId);
   return attemptResponse_(active, getQuestionById_(active.questionId), student, active.testMode, true, getConfig_());
 }
 
@@ -259,6 +280,7 @@ function submitAttempt_(body) {
     if (!active || active.attemptToken !== String(body.attemptToken)) {
       throw appError_('実施情報を確認できません。', 'ATTEMPT_NOT_FOUND');
     }
+    ensureContinuationAllowed_(active.studentId);
     var config = getConfig_();
     var question = getQuestionById_(active.questionId);
     if (!question) throw appError_('問題データを確認できません。', 'QUESTION_NOT_FOUND');
